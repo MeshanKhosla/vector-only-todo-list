@@ -33,6 +33,8 @@ type VectorMetadata = {
   [PASSWORD_KEY]: string;
 }
 
+const TOP_K = 5;
+
 /** Creates an embedding for the given name and adds to vector DB
  *  @param name - Name of the todo list
  *  @param password - Password for the todo list
@@ -104,7 +106,7 @@ export async function findTodoList(formData: z.infer<typeof createOrFindTodoList
 
   const queryResult = await index.query({
     vector: embedding,
-    topK: 5,
+    topK: TOP_K,
     includeMetadata: true,
     includeVectors: false,
   });
@@ -170,7 +172,7 @@ export async function todoListNameExists(name: string, embedding?: number[]) {
 
   const queryResult = await index.query({
     vector: embedding,
-    topK: 5,
+    topK: TOP_K,
     includeMetadata: true,
     includeVectors: false,
   });
