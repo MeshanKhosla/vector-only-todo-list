@@ -58,6 +58,10 @@ export async function createTodoList(formData: z.infer<typeof createOrFindTodoLi
     throw new Error("Failed to create embedding for the name");
   }
 
+  if (await todoListNameExists(todoListName, embedding)) {
+    throw new Error("Todo list with that name already exists");
+  }
+
   const nodeId = crypto.randomBytes(8).toString("hex");
   const hashedPassword = await bcrypt.hash(password, 8);
   const upsertResponse = await index.upsert({
@@ -137,4 +141,44 @@ export async function getTodoList(listId: string) {
     name: allMetadata[NAME_KEY],
     todoList: allMetadata[TODO_LIST_KEY],
   };
+}
+
+/** Checks if a todo list name already exists
+ * If the embedding is not provided, it will be created
+ */
+export async function todoListNameExists(name: string, embedding?: number[]) {
+  if (!name && !embedding) {
+    throw new Error("Must pass in either the name or the embedding");
+  }
+
+  if (name) {
+    const embeddingResult = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: name,
+      encoding_format: "float",
+    });
+
+    embedding = embeddingResult.data.at(0)?.embedding;
+  }
+
+  if (!embedding) {
+    throw new Error("Failed to create embedding for the name");
+  }
+
+  const queryResult = await index.query({
+    vector: embedding,
+    topK: 5,
+    includeMetadata: true,
+    includeVectors: false,
+  });
+
+  for (const result of queryResult) {
+    const metadata = result.metadata as VectorMetadata;
+    console.log(metadata)
+    if (metadata[NAME_KEY] === name) {
+      return true;
+    }
+  }
+
+  return false;
 }

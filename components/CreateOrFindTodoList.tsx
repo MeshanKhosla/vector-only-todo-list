@@ -119,7 +119,7 @@ export default function CreateOrFindTodoList() {
                   <Input disabled={loading} type="password" {...field} />
                 </FormControl>
                 <FormDescription className="font-bold">
-                  This is used to lock your todo list. Please don't use a real password
+                  This is used to lock your todo list.
                 </FormDescription>
                 <FormMessage />
               </FormItem>
