@@ -123,6 +123,7 @@ export async function findTodoList(formData: z.infer<typeof createOrFindTodoList
   return false;
 }
 
+
 /** Gets a todo list given a list ID */
 export async function getTodoList(listId: string) {
   const vector = await index.fetch([listId], {
@@ -137,10 +138,12 @@ export async function getTodoList(listId: string) {
 
   const allMetadata = metadata as VectorMetadata;
 
-  return {
+  const res = {
     name: allMetadata[NAME_KEY],
     todoList: allMetadata[TODO_LIST_KEY],
   };
+
+  return res;
 }
 
 /** Checks if a todo list name already exists
@@ -174,11 +177,47 @@ export async function todoListNameExists(name: string, embedding?: number[]) {
 
   for (const result of queryResult) {
     const metadata = result.metadata as VectorMetadata;
-    console.log(metadata)
     if (metadata[NAME_KEY] === name) {
       return true;
     }
   }
 
   return false;
+}
+
+type FullQueryResult = {
+  id: string;
+  vector: number[];
+  metadata: VectorMetadata;
+}
+
+/** Adds a todo item to the todo list
+ *  @param listId - The ID of the todo list
+ *  @param allTodos - The list of all todos (including the new one and the old ones)
+ */
+export async function updateTodoItems(listId: string, allTodos: Todo[]) {
+  const existingVector = await index.fetch([listId], {
+    includeMetadata: true,
+    includeVectors: true,
+  }) as FullQueryResult[];
+
+  if (!existingVector[0].vector) {
+    throw new Error("Failed to get vector for the todo list");
+  }
+
+  const existingMetadata = existingVector[0].metadata;
+
+  const upsertResponse = await index.upsert({
+    id: listId,
+    vector: existingVector[0].vector,
+    metadata: {
+      [NAME_KEY]: existingMetadata[NAME_KEY],
+      [TODO_LIST_KEY]: allTodos,
+      [PASSWORD_KEY]: existingMetadata[PASSWORD_KEY],
+    }
+  })
+
+  if (upsertResponse !== 'Success') {
+    throw new Error("Failed to add todo to the database");
+  }
 }

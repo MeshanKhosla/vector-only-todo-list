@@ -4,8 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
-import TodoList from "@/components/TodoList";
-import { createTodoList, findTodoList } from "@/app/actions";
+import CreateTodos from "@/components/CreateTodos";
+import { Todo, createTodoList, findTodoList, getTodoList, updateTodoItems } from "@/app/actions";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
@@ -18,17 +18,25 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { Loader2 as Spinner } from "lucide-react";
 
 const createOrFindTodoListFormSchema = z.object({
   todoListName: z.string().min(3).max(50),
   password: z.string().min(3).max(50),
 });
 
+export type TodoListData = {
+  name: string
+  todoList: Todo[]
+}
+
 export default function CreateOrFindTodoList() {
   const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
-  const [listId, setListId] = useState<string>();
+  const [todoListName, setTodoName] = useState<string>()
+  const [listId, setListId] = useState<string>()
+  const [todoList, setTodoList] = useState<Todo[]>()
+  const [isPending, startTransition] = useTransition();
 
   const form = useForm<z.infer<typeof createOrFindTodoListFormSchema>>({
     resolver: zodResolver(createOrFindTodoListFormSchema),
@@ -38,27 +46,90 @@ export default function CreateOrFindTodoList() {
     }
   });
 
-  async function onCreate(values: z.infer<typeof createOrFindTodoListFormSchema>) {
-    setLoading(true)
+  const markTodo = async (id: string, completed: boolean) => {
+    if (!listId || todoList === undefined) return;
 
     try {
-      const listId = await createTodoList(values)
-      toast({
-        title: "Todo List Created",
-        variant: "success"
+      const updatedTodoList = todoList.map(todo => {
+        if (todo.id === id) {
+          return {
+            ...todo,
+            completed
+          }
+        }
+        return todo;
       })
-      setListId(listId)
-      setLoading(false)
-      form.reset()
+
+      await updateTodoItems(listId, updatedTodoList)
+      setTodoList(updatedTodoList)
     } catch (error) {
-      setLoading(false)
       toast({
         title: "Error",
         description: (error as Error).message,
         variant: "destructive"
       })
-      form.reset()
     }
+  }
+
+  const createNewTodo = async (todo: Todo) => {
+    if (!listId || todoList === undefined) return;
+
+    try {
+      await updateTodoItems(listId, [
+        ...todoList,
+        todo
+      ])
+
+      setTodoList((prev) => {
+        if (!prev) return prev;
+        return [
+          ...prev,
+          todo
+        ]
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: (error as Error).message,
+        variant: "destructive"
+      })
+    }
+  }
+
+  const getTodoListData = async (listId: string) => {
+    try {
+      const data = await getTodoList(listId)
+      setTodoList(data.todoList);
+      setTodoName(data.name);
+      setListId(listId);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: (error as Error).message,
+        variant: "destructive"
+      })
+    }
+  }
+
+  const onCreate = async (values: z.infer<typeof createOrFindTodoListFormSchema>) => {
+    startTransition(async () => {
+      try {
+        const listId = await createTodoList(values)
+        toast({
+          title: "Todo List Created",
+          variant: "success"
+        })
+        await getTodoListData(listId)
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: (error as Error).message,
+          variant: "destructive"
+        })
+      }
+
+      form.reset()
+    });
   }
 
   const handleTodoListNotFound = (msg: string) => {
@@ -66,30 +137,27 @@ export default function CreateOrFindTodoList() {
       title: msg,
       variant: "destructive"
     })
-    setLoading(false)
     form.reset()
   }
 
   async function onFind(values: z.infer<typeof createOrFindTodoListFormSchema>) {
-    setLoading(true)
-
-    try {
-      const listId = await findTodoList(values)
-      if (!listId) {
-        handleTodoListNotFound("Todo List Not Found");
-        return;
+    startTransition(async () => {
+      try {
+        const listId = await findTodoList(values)
+        if (!listId) {
+          handleTodoListNotFound("Todo List Not Found");
+          return;
+        }
+        toast({
+          title: "Todo List Found",
+          variant: "success"
+        })
+        form.reset()
+        await getTodoListData(listId)
+      } catch (error) {
+        handleTodoListNotFound((error as Error).message);
       }
-      toast({
-        title: "Todo List Found",
-        variant: "success"
-      })
-      setListId(listId as string)
-      setLoading(false)
-      form.reset()
-    } catch (error) {
-      handleTodoListNotFound((error as Error).message);
-      return;
-    }
+    })
   }
 
   return (
@@ -103,7 +171,7 @@ export default function CreateOrFindTodoList() {
               <FormItem>
                 <FormLabel>Todo List Name</FormLabel>
                 <FormControl>
-                  <Input disabled={loading} placeholder="Monday todos" {...field} />
+                  <Input disabled={isPending} placeholder="Monday todos" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -116,7 +184,7 @@ export default function CreateOrFindTodoList() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input disabled={loading} type="password" {...field} />
+                  <Input disabled={isPending} type="password" {...field} />
                 </FormControl>
                 <FormDescription className="font-bold">
                   This is used to lock your todo list.
@@ -125,17 +193,19 @@ export default function CreateOrFindTodoList() {
               </FormItem>
             )}
           />
-          <div className="flex flex-col gap-3">
-            <Button disabled={loading} onClick={form.handleSubmit(onFind)}>Find</Button>
-            <Button variant='secondary' disabled={loading} type="submit" onClick={form.handleSubmit(onCreate)}>Create</Button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button className='w-full sm:w-1/2' disabled={isPending} onClick={form.handleSubmit(onFind)}>Find</Button>
+            <Button className='w-full sm:w-1/2' variant='secondary' disabled={isPending} type="submit" onClick={form.handleSubmit(onCreate)}>Create</Button>
           </div>
         </form>
       </Form>
 
       <Separator className='my-4' />
 
-      {listId && (
-        <TodoList listId={listId} />
+      {isPending && <Spinner className="h-7 w-7 animate-spin" />}
+
+      {(todoList !== undefined) && listId && todoListName && (
+        <CreateTodos name={todoListName} todoList={todoList} createNewTodo={createNewTodo} markTodo={markTodo} />
       )}
     </div>
   );
