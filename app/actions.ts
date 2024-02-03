@@ -33,12 +33,13 @@ type VectorMetadata = {
   [PASSWORD_KEY]: string;
 }
 
+// Hardcoding top k since names are unique
 const TOP_K = 5;
 
 /** Creates an embedding for the given name and adds to vector DB
  *  @param name - Name of the todo list
  *  @param password - Password for the todo list
- *  @returns - Promise<string> - The node ID of the created todo list
+ *  @returns - Promise<string | boolean> - The node ID of the created todo list. False if the todo list name already exists
  */
 export async function createTodoList(formData: z.infer<typeof createOrFindTodoListFormSchema>) {
   const parsedData = createOrFindTodoListFormSchema.safeParse(formData);
@@ -61,7 +62,7 @@ export async function createTodoList(formData: z.infer<typeof createOrFindTodoLi
   }
 
   if (await todoListNameExists(todoListName, embedding)) {
-    throw new Error("Todo list with that name already exists");
+    return false;
   }
 
   const nodeId = crypto.randomBytes(8).toString("hex");

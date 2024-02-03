@@ -46,6 +46,14 @@ export default function CreateOrFindTodoList() {
     }
   });
 
+  const handleToastError = (msg: string) => {
+    toast({
+      title: msg,
+      variant: "destructive"
+    })
+    form.reset()
+  }
+
   const markTodo = async (id: string, completed: boolean) => {
     if (!listId || todoList === undefined) return;
 
@@ -63,11 +71,7 @@ export default function CreateOrFindTodoList() {
       await updateTodoItems(listId, updatedTodoList)
       setTodoList(updatedTodoList)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: (error as Error).message,
-        variant: "destructive"
-      })
+      handleToastError((error as Error).message);
     }
   }
 
@@ -88,11 +92,7 @@ export default function CreateOrFindTodoList() {
         ]
       })
     } catch (error) {
-      toast({
-        title: "Error",
-        description: (error as Error).message,
-        variant: "destructive"
-      })
+      handleToastError((error as Error).message);
     }
   }
 
@@ -103,11 +103,7 @@ export default function CreateOrFindTodoList() {
       setTodoName(data.name);
       setListId(listId);
     } catch (error) {
-      toast({
-        title: "Error",
-        description: (error as Error).message,
-        variant: "destructive"
-      })
+      handleToastError((error as Error).message);
     }
   }
 
@@ -119,25 +115,18 @@ export default function CreateOrFindTodoList() {
           title: "Todo List Created",
           variant: "success"
         })
+        // if listId is falsey, it means the todo list was not created
+        if (!listId) {
+          handleToastError("Todo list with that name already exists.");
+          return;
+        }
         await getTodoListData(listId)
       } catch (error) {
-        toast({
-          title: "Error",
-          description: (error as Error).message,
-          variant: "destructive"
-        })
+        handleToastError((error as Error).message);
       }
 
       form.reset()
     });
-  }
-
-  const handleTodoListNotFound = (msg: string) => {
-    toast({
-      title: msg,
-      variant: "destructive"
-    })
-    form.reset()
   }
 
   async function onFind(values: z.infer<typeof createOrFindTodoListFormSchema>) {
@@ -145,7 +134,7 @@ export default function CreateOrFindTodoList() {
       try {
         const listId = await findTodoList(values)
         if (!listId) {
-          handleTodoListNotFound("Todo List Not Found");
+          handleToastError("Todo List Not Found");
           return;
         }
         toast({
@@ -155,7 +144,7 @@ export default function CreateOrFindTodoList() {
         form.reset()
         await getTodoListData(listId)
       } catch (error) {
-        handleTodoListNotFound((error as Error).message);
+        handleToastError((error as Error).message);
       }
     })
   }
