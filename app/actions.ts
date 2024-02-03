@@ -16,7 +16,7 @@ const NAME_KEY = "name";
 const TODO_LIST_KEY = "todoList";
 const PASSWORD_KEY = "password";
 
-const createTodoFormSchema = z.object({
+const createOrFindTodoListFormSchema = z.object({
   todoListName: z.string().min(3).max(50),
   password: z.string().min(3).max(50),
 });
@@ -38,15 +38,13 @@ type VectorMetadata = {
  *  @param password - Password for the todo list
  *  @returns - Promise<string> - The node ID of the created todo list
  */
-export async function createTodoList(formData: z.infer<typeof createTodoFormSchema>) {
-  const parsedData = createTodoFormSchema.safeParse(formData);
+export async function createTodoList(formData: z.infer<typeof createOrFindTodoListFormSchema>) {
+  const parsedData = createOrFindTodoListFormSchema.safeParse(formData);
   if (!parsedData.success) {
     throw new Error("Invalid form data");
   }
 
   const { todoListName, password } = parsedData.data;
-
-  const hashedPassword = await bcrypt.hash(password, 10);
 
   const embeddingResult = await openai.embeddings.create({
     model: "text-embedding-3-small",
@@ -61,6 +59,7 @@ export async function createTodoList(formData: z.infer<typeof createTodoFormSche
   }
 
   const nodeId = crypto.randomBytes(8).toString("hex");
+  const hashedPassword = await bcrypt.hash(password, 8);
   const upsertResponse = await index.upsert({
     id: nodeId,
     vector: embedding,
@@ -76,6 +75,48 @@ export async function createTodoList(formData: z.infer<typeof createTodoFormSche
   }
 
   return nodeId;
+}
+
+/** Attempt to find the todo list associated with the name/password */
+export async function findTodoList(formData: z.infer<typeof createOrFindTodoListFormSchema>) {
+  const parsedData = createOrFindTodoListFormSchema.safeParse(formData);
+  if (!parsedData.success) {
+    throw new Error("Invalid form data");
+  }
+
+  const { todoListName, password } = parsedData.data;
+
+  const embeddingResult = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: todoListName,
+    encoding_format: "float",
+  });
+
+  const embedding = embeddingResult.data.at(0)?.embedding;
+
+  if (!embedding) {
+    throw new Error("Failed to create embedding for the name");
+  }
+
+  const queryResult = await index.query({
+    vector: embedding,
+    topK: 5,
+    includeMetadata: true,
+    includeVectors: false,
+  });
+
+  // Check if any of the results match the password
+  for (const result of queryResult) {
+    const metadata = result.metadata as VectorMetadata;
+    if (metadata[NAME_KEY] === todoListName) {
+      const passwordMatch = await bcrypt.compare(password, metadata[PASSWORD_KEY]);
+      if (passwordMatch) {
+        return result.id as string;
+      }
+    }
+  }
+
+  return false;
 }
 
 /** Gets a todo list given a list ID */

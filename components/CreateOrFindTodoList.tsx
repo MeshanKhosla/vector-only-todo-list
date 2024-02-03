@@ -2,9 +2,10 @@
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
 import TodoList from "@/components/TodoList";
-import { createTodoList } from "@/app/actions";
+import { createTodoList, findTodoList } from "@/app/actions";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
@@ -19,25 +20,25 @@ import {
 import { z } from "zod";
 import { useState } from "react";
 
-const createTodoFormSchema = z.object({
+const createOrFindTodoListFormSchema = z.object({
   todoListName: z.string().min(3).max(50),
   password: z.string().min(3).max(50),
 });
 
-export default function CreateTodoList() {
+export default function CreateOrFindTodoList() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [listId, setListId] = useState<string>();
 
-  const form = useForm<z.infer<typeof createTodoFormSchema>>({
-    resolver: zodResolver(createTodoFormSchema),
+  const form = useForm<z.infer<typeof createOrFindTodoListFormSchema>>({
+    resolver: zodResolver(createOrFindTodoListFormSchema),
     defaultValues: {
       todoListName: "",
       password: "",
     }
   });
 
-  async function onSubmit(values: z.infer<typeof createTodoFormSchema>) {
+  async function onCreate(values: z.infer<typeof createOrFindTodoListFormSchema>) {
     setLoading(true)
 
     try {
@@ -60,10 +61,41 @@ export default function CreateTodoList() {
     }
   }
 
+  const handleTodoListNotFound = (msg: string) => {
+    toast({
+      title: msg,
+      variant: "destructive"
+    })
+    setLoading(false)
+    form.reset()
+  }
+
+  async function onFind(values: z.infer<typeof createOrFindTodoListFormSchema>) {
+    setLoading(true)
+
+    try {
+      const listId = await findTodoList(values)
+      if (!listId) {
+        handleTodoListNotFound("Todo List Not Found");
+        return;
+      }
+      toast({
+        title: "Todo List Found",
+        variant: "success"
+      })
+      setListId(listId as string)
+      setLoading(false)
+      form.reset()
+    } catch (error) {
+      handleTodoListNotFound((error as Error).message);
+      return;
+    }
+  }
+
   return (
-    <div className="m-4">
+    <div>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+        <form className="space-y-3">
           <FormField
             control={form.control}
             name="todoListName"
@@ -93,9 +125,15 @@ export default function CreateTodoList() {
               </FormItem>
             )}
           />
-          <Button disabled={loading} type="submit">Create</Button>
+          <div className="flex flex-col gap-3">
+            <Button disabled={loading} onClick={form.handleSubmit(onFind)}>Find</Button>
+            <Button variant='secondary' disabled={loading} type="submit" onClick={form.handleSubmit(onCreate)}>Create</Button>
+          </div>
         </form>
       </Form>
+
+      <Separator className='my-4' />
+
       {listId && (
         <TodoList listId={listId} />
       )}
